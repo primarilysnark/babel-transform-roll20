@@ -58,7 +58,7 @@ test('transforms nested imports', async (t) => {
   t.is(code, result)
 })
 
-test.only('transforms mixed imports', async (t) => {
+test('transforms mixed imports', async (t) => {
   const result = await loadFile('./test/transforms/mixed-import.js')
   const { code } = await transform('./test/fixtures/mixed-import.js')
 
