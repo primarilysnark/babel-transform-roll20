@@ -1,35 +1,51 @@
 const babelParser = require('@babel/parser')
 const fs = require('fs')
+const path = require('path')
 
 const moduleIdentifier = 'modules'
 const fileRegExp = /(?:(\.*)\/((?:[A-Za-z0-9-]+\/)*))([A-Za-z0-9-]+)/
 
 module.exports = function roll20Transform ({ types: t }) {
-  function getFileContents (filePath) {
+  function getFileContents (filePath, roots) {
     try {
-      return fs.readFileSync(filePath, {
+      const file = fs.readFileSync(filePath, {
         encoding: 'UTF-8'
       })
+
+      roots.push(path.parse(filePath).dir.slice(1))
+
+      return file
     } catch (exception) {
       if (exception.code !== 'ENOENT') {
         throw exception
       }
 
-      return fs.readFileSync(filePath.slice(0, -3) + '/index.js', {
+      const file = fs.readFileSync(filePath.slice(0, -3) + '/index.js', {
         encoding: 'UTF-8'
       })
+
+      roots.push(filePath.slice(1, -3))
+
+      return file
     }
   }
 
-  function guaranteeModulePath (programPath, modulePath, moduleName) {
-    if (!programPath.__visited_files[modulePath]) {
-      const moduleContents = getFileContents(modulePath)
+  function getModule (basePath) {
+    const program = basePath.findParent((parent) => parent.isProgram())
+    const currentRoot = program.__roots[program.__roots_index]
 
-      const parsedModule = babelParser.parse(moduleContents, {
-        sourceType: 'module'
-      }).program.body
+    const filePath = `/${path.join(currentRoot, basePath.node.source.value)}`
+    const moduleName = `'${path.relative(process.cwd(), filePath)}'`
 
-      programPath.unshiftContainer('body', t.variableDeclarator(
+    if (!program.__visited_files[filePath]) {
+      const fileContents = getFileContents(`${filePath}.js`, program.__roots)
+      const module = t.blockStatement(
+        babelParser.parse(fileContents, {
+          sourceType: 'module'
+        }).program.body
+      )
+
+      program.unshiftContainer('body', t.variableDeclarator(
         t.memberExpression(
           t.identifier('modules'),
           t.identifier(moduleName),
@@ -40,26 +56,25 @@ module.exports = function roll20Transform ({ types: t }) {
             t.functionExpression(
               null,
               [],
-              t.blockStatement(
-                parsedModule
-              )
+              module
             )
           ),
           []
         )
       ))
-
-      programPath.__visited_files[modulePath] = true
     }
+
+    return moduleName
   }
 
   return {
     name: 'babel-transform-roll20',
     visitor: {
       Program: {
-        enter (path) {
-          path.__roots = fileRegExp.exec(path.hub.file.opts.filename)[2].split('/').filter(path => path !== '')
-          path.__visited_files = {}
+        enter (program) {
+          program.__roots = [path.relative(process.cwd(), fileRegExp.exec(program.hub.file.opts.filename)[2])]
+          program.__roots_index = 0
+          program.__visited_files = {}
         },
         exit (path) {
           path.unshiftContainer('body', t.variableDeclaration('const', [
@@ -75,12 +90,18 @@ module.exports = function roll20Transform ({ types: t }) {
           const ancestor = path.parentPath.parentPath.parentPath.parentPath
 
           if (ancestor.node.id && ancestor.node.id.object.name === 'modules' && t.isProgram(ancestor.parentPath.node)) {
+            const program = path.findParent((parent) => parent.isProgram())
+            program.__roots_index++
+
             path.__module = true
             path.__exports = {}
           }
         },
         exit (path) {
           if (path.__module && Object.keys(path.__exports).length !== 0) {
+            const program = path.findParent((parent) => parent.isProgram())
+            program.__roots.unshift()
+
             path.__module = false
 
             const exportAllKeys = Object.keys(path.__exports).filter(exportKey => exportKey.startsWith('__export__') && exportKey !== '__export__default')
@@ -117,30 +138,10 @@ module.exports = function roll20Transform ({ types: t }) {
             return
           }
 
-          const [, dotStart, fileRoot, fileName] = fileRegExp.exec(path.node.source.value)
-          const programPath = path.findParent((parent) => parent.isProgram())
-          const roots = [...programPath.__roots]
-
-          if (dotStart.length === 2) {
-            roots.pop()
-          }
-
-          if (fileRoot.length !== 0 && roots[roots.length - 1] !== fileRoot) {
-            roots.push(fileRoot)
-          }
-
-          let rootsPath = roots.join('/')
-          if (!rootsPath.endsWith('/')) {
-            rootsPath += '/'
-          }
-
-          const modulePath = `/${rootsPath}${fileName}.js`
-          const moduleName = `'${modulePath.slice(process.cwd().length + 1, -3)}'`
-          const exportName = `__export__${modulePath.slice(process.cwd().length + 1, -3).replace(/[\/-]/g, '_')}`
+          const moduleName = getModule(path)
+          const exportName = `__export__${moduleName.slice(1, -1).replace(/[/-]/g, '_')}`
 
           exportBlock.__exports[exportName] = true
-
-          guaranteeModulePath(programPath, modulePath, moduleName)
 
           path.replaceWith(
             t.variableDeclaration('const', [
@@ -241,27 +242,8 @@ module.exports = function roll20Transform ({ types: t }) {
         }
       },
       ImportDeclaration: {
-        enter (path) {
-          const [, dotStart, fileRoot, fileName] = fileRegExp.exec(path.node.source.value)
-          const programPath = path.findParent((parent) => parent.isProgram())
-
-          if (dotStart.length === 2) {
-            programPath.__roots.pop()
-          }
-
-          if (fileRoot.length !== 0 && programPath.__roots[programPath.__roots.length - 1] !== fileRoot) {
-            programPath.__roots.push(fileRoot)
-          }
-
-          let rootsPath = programPath.__roots.join('/')
-          if (!rootsPath.endsWith('/')) {
-            rootsPath += '/'
-          }
-
-          const modulePath = `/${rootsPath}${fileName}.js`
-          const moduleName = `'${modulePath.slice(process.cwd().length + 1, -3)}'`
-
-          guaranteeModulePath(programPath, modulePath, moduleName)
+        exit (path) {
+          const moduleName = getModule(path)
 
           path.replaceWithMultiple(
             path.node.specifiers.map(specifier => {
@@ -313,9 +295,6 @@ module.exports = function roll20Transform ({ types: t }) {
               }
             })
           )
-        },
-        exit (path) {
-          path.findParent((parent) => parent.isProgram()).__roots.pop()
         }
       }
     }

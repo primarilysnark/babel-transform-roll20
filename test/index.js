@@ -78,3 +78,10 @@ test('transforms index imports', async (t) => {
 
   t.is(code, result)
 })
+
+test('transforms multiple folder imports', async (t) => {
+  const result = await loadFile('./test/transforms/multiple-folders.js')
+  const { code } = await transform('./test/fixtures/multiple-folders.js')
+
+  t.is(code, result)
+})
