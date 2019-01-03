@@ -71,3 +71,10 @@ test('transforms collected imports', async (t) => {
 
   t.is(code, result)
 })
+
+test('transforms index imports', async (t) => {
+  const result = await loadFile('./test/transforms/index-import.js')
+  const { code } = await transform('./test/fixtures/index-import.js')
+
+  t.is(code, result)
+})

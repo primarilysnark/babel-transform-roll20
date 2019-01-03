@@ -5,11 +5,25 @@ const moduleIdentifier = 'modules'
 const fileRegExp = /(?:(\.*)\/((?:[A-Za-z0-9-]+\/)*))([A-Za-z0-9-]+)/
 
 module.exports = function roll20Transform ({ types: t }) {
-  function guaranteeModulePath (programPath, modulePath, moduleName) {
-    if (!programPath.__visited_files[modulePath]) {
-      const moduleContents = fs.readFileSync(modulePath, {
+  function getFileContents (filePath) {
+    try {
+      return fs.readFileSync(filePath, {
         encoding: 'UTF-8'
       })
+    } catch (exception) {
+      if (exception.code !== 'ENOENT') {
+        throw exception
+      }
+
+      return fs.readFileSync(filePath.slice(0, -3) + '/index.js', {
+        encoding: 'UTF-8'
+      })
+    }
+  }
+
+  function guaranteeModulePath (programPath, modulePath, moduleName) {
+    if (!programPath.__visited_files[modulePath]) {
+      const moduleContents = getFileContents(modulePath)
 
       const parsedModule = babelParser.parse(moduleContents, {
         sourceType: 'module'
@@ -34,6 +48,8 @@ module.exports = function roll20Transform ({ types: t }) {
           []
         )
       ))
+
+      programPath.__visited_files[modulePath] = true
     }
   }
 
@@ -113,7 +129,12 @@ module.exports = function roll20Transform ({ types: t }) {
             roots.push(fileRoot)
           }
 
-          const modulePath = `/${roots.join('/')}${fileName}.js`
+          let rootsPath = roots.join('/')
+          if (!rootsPath.endsWith('/')) {
+            rootsPath += '/'
+          }
+
+          const modulePath = `/${rootsPath}${fileName}.js`
           const moduleName = `'${modulePath.slice(process.cwd().length + 1, -3)}'`
           const exportName = `__export__${modulePath.slice(process.cwd().length + 1, -3).replace(/[\/-]/g, '_')}`
 
@@ -232,7 +253,12 @@ module.exports = function roll20Transform ({ types: t }) {
             programPath.__roots.push(fileRoot)
           }
 
-          const modulePath = `/${programPath.__roots.join('/')}${fileName}.js`
+          let rootsPath = programPath.__roots.join('/')
+          if (!rootsPath.endsWith('/')) {
+            rootsPath += '/'
+          }
+
+          const modulePath = `/${rootsPath}${fileName}.js`
           const moduleName = `'${modulePath.slice(process.cwd().length + 1, -3)}'`
 
           guaranteeModulePath(programPath, modulePath, moduleName)
@@ -287,8 +313,6 @@ module.exports = function roll20Transform ({ types: t }) {
               }
             })
           )
-
-          programPath.__visited_files[fileName] = true
         },
         exit (path) {
           path.findParent((parent) => parent.isProgram()).__roots.pop()

@@ -1,5 +1,5 @@
 const modules = {};
-modules['test/fixtures/export-all/object-b'] = (function () {
+modules['test/fixtures/import-all/object-b'] = (function () {
   const objectB = {
     key: 'value'
   };
@@ -7,7 +7,7 @@ modules['test/fixtures/export-all/object-b'] = (function () {
     objectB: objectB
   });
 })()
-modules['test/fixtures/export-all/object-a'] = (function () {
+modules['test/fixtures/import-all/object-a'] = (function () {
   const objectA = {
     key: 'value'
   };
@@ -15,10 +15,10 @@ modules['test/fixtures/export-all/object-a'] = (function () {
     objectA: objectA
   });
 })()
-modules['test/fixtures/export-all/objects'] = (function () {
-  const __export__test_fixtures_export_all_object_a = modules['test/fixtures/export-all/object-a'];
-  const __export__test_fixtures_export_all_object_b = modules['test/fixtures/export-all/object-b'];
-  return Object.assign({}, __export__test_fixtures_export_all_object_a, __export__test_fixtures_export_all_object_b, {});
+modules['test/fixtures/import-all/objects'] = (function () {
+  const __export__test_fixtures_import_all_object_a = modules['test/fixtures/import-all/object-a'];
+  const __export__test_fixtures_import_all_object_b = modules['test/fixtures/import-all/object-b'];
+  return Object.assign({}, __export__test_fixtures_import_all_object_a, __export__test_fixtures_import_all_object_b, {});
 })()
-const objects = modules['test/fixtures/export-all/objects'];
+const objects = modules['test/fixtures/import-all/objects'];
 console.log(objects.objectA, objects.objectB);
