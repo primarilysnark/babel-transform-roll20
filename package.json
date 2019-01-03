@@ -2,9 +2,9 @@
   "name": "babel-transform-roll20",
   "version": "0.0.1",
   "description": "A babel transform tool for transpiling scripts for the Roll20 sandbox.",
-  "main": "index.js",
+  "main": "src/index.js",
   "scripts": {
-    "lint": "standard src/**/*.js",
+    "lint": "standard",
     "test": "NODE_ENV=test BABEL_DISABLE_CACHE=1 ava"
   },
   "author": "",
@@ -22,6 +22,12 @@
       "test/**/*.js",
       "!test/fixtures/**/*.js",
       "!test/transforms/**/*.js"
+    ]
+  },
+  "standard": {
+    "ignore": [
+      "test/fixtures",
+      "test/transforms"
     ]
   }
 }

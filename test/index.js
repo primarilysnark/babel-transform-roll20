@@ -32,35 +32,35 @@ function loadFile (filePath) {
 
 test('transforms an empty file', async (t) => {
   const result = await loadFile('./test/transforms/empty.js')
-  const {code} = await transform('./test/fixtures/empty.js')
+  const { code } = await transform('./test/fixtures/empty.js')
 
   t.is(code, result)
 })
 
 test('transforms default exports', async (t) => {
   const result = await loadFile('./test/transforms/default-import.js')
-  const {code} = await transform('./test/fixtures/default-import.js')
+  const { code } = await transform('./test/fixtures/default-import.js')
 
   t.is(code, result)
 })
 
 test('transforms named exports', async (t) => {
   const result = await loadFile('./test/transforms/named-import.js')
-  const {code} = await transform('./test/fixtures/named-import.js')
+  const { code } = await transform('./test/fixtures/named-import.js')
 
   t.is(code, result)
 })
 
 test('transforms nested imports', async (t) => {
   const result = await loadFile('./test/transforms/nested-import.js')
-  const {code} = await transform('./test/fixtures/nested-import.js')
+  const { code } = await transform('./test/fixtures/nested-import.js')
 
   t.is(code, result)
 })
 
 test.only('transforms mixed imports', async (t) => {
   const result = await loadFile('./test/transforms/mixed-import.js')
-  const {code} = await transform('./test/fixtures/mixed-import.js')
+  const { code } = await transform('./test/fixtures/mixed-import.js')
 
   t.is(code, result)
 })
