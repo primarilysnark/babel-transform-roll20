@@ -64,3 +64,10 @@ test('transforms mixed imports', async (t) => {
 
   t.is(code, result)
 })
+
+test('transforms collected imports', async (t) => {
+  const result = await loadFile('./test/transforms/import-all.js')
+  const { code } = await transform('./test/fixtures/import-all.js')
+
+  t.is(code, result)
+})

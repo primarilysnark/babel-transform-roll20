@@ -5,6 +5,38 @@ const moduleIdentifier = 'modules'
 const fileRegExp = /(?:(\.*)\/((?:[A-Za-z0-9-]+\/)*))([A-Za-z0-9-]+)/
 
 module.exports = function roll20Transform ({ types: t }) {
+  function guaranteeModulePath (programPath, modulePath, moduleName) {
+    if (!programPath.__visited_files[modulePath]) {
+      const moduleContents = fs.readFileSync(modulePath, {
+        encoding: 'UTF-8'
+      })
+
+      const parsedModule = babelParser.parse(moduleContents, {
+        sourceType: 'module'
+      }).program.body
+
+      programPath.unshiftContainer('body', t.variableDeclarator(
+        t.memberExpression(
+          t.identifier('modules'),
+          t.identifier(moduleName),
+          true
+        ),
+        t.callExpression(
+          t.parenthesizedExpression(
+            t.functionExpression(
+              null,
+              [],
+              t.blockStatement(
+                parsedModule
+              )
+            )
+          ),
+          []
+        )
+      ))
+    }
+  }
+
   return {
     name: 'babel-transform-roll20',
     visitor: {
@@ -35,20 +67,72 @@ module.exports = function roll20Transform ({ types: t }) {
           if (path.__module && Object.keys(path.__exports).length !== 0) {
             path.__module = false
 
+            const exportAllKeys = Object.keys(path.__exports).filter(exportKey => exportKey.startsWith('__export__') && exportKey !== '__export__default')
+            const exportKeys = Object.keys(path.__exports).filter(exportKey => !exportKey.startsWith('__export__') || exportKey === '__export__default')
+
             path.pushContainer('body', t.returnStatement(
-              t.objectExpression(
-                Object.keys(path.__exports).map(exportKey => {
-                  const exportValue = path.__exports[exportKey]
+              t.callExpression(
+                t.memberExpression(
+                  t.identifier('Object'),
+                  t.identifier('assign')
+                ),
+                [
+                  t.objectExpression([]),
+                  ...exportAllKeys.map(exportKey => t.identifier(exportKey)),
+                  t.objectExpression(exportKeys.map(exportKey => {
+                    const exportValue = path.__exports[exportKey]
 
-                  if (exportKey === '__export__default') {
-                    return t.objectProperty(t.identifier('default'), exportValue === true ? t.identifier(exportKey) : exportValue)
-                  }
+                    if (exportKey === '__export__default') {
+                      return t.objectProperty(t.identifier('default'), exportValue === true ? t.identifier(exportKey) : exportValue)
+                    }
 
-                  return t.objectProperty(t.identifier(exportKey), exportValue === true ? t.identifier(exportKey) : exportValue)
-                })
+                    return t.objectProperty(t.identifier(exportKey), exportValue === true ? t.identifier(exportKey) : exportValue)
+                  }))
+                ]
               )
             ))
           }
+        }
+      },
+      ExportAllDeclaration: {
+        exit (path) {
+          const exportBlock = path.findParent((parent) => parent.__module)
+          if (!exportBlock) {
+            return
+          }
+
+          const [, dotStart, fileRoot, fileName] = fileRegExp.exec(path.node.source.value)
+          const programPath = path.findParent((parent) => parent.isProgram())
+          const roots = [...programPath.__roots]
+
+          if (dotStart.length === 2) {
+            roots.pop()
+          }
+
+          if (fileRoot.length !== 0 && roots[roots.length - 1] !== fileRoot) {
+            roots.push(fileRoot)
+          }
+
+          const modulePath = `/${roots.join('/')}${fileName}.js`
+          const moduleName = `'${modulePath.slice(process.cwd().length + 1, -3)}'`
+          const exportName = `__export__${modulePath.slice(process.cwd().length + 1, -3).replace(/[\/-]/g, '_')}`
+
+          exportBlock.__exports[exportName] = true
+
+          guaranteeModulePath(programPath, modulePath, moduleName)
+
+          path.replaceWith(
+            t.variableDeclaration('const', [
+              t.variableDeclarator(
+                t.identifier(exportName),
+                t.memberExpression(
+                  t.identifier('modules'),
+                  t.identifier(moduleName),
+                  true
+                )
+              )
+            ])
+          )
         }
       },
       ExportDefaultDeclaration: {
@@ -151,35 +235,7 @@ module.exports = function roll20Transform ({ types: t }) {
           const modulePath = `/${programPath.__roots.join('/')}${fileName}.js`
           const moduleName = `'${modulePath.slice(process.cwd().length + 1, -3)}'`
 
-          if (!programPath.__visited_files[modulePath]) {
-            const moduleContents = fs.readFileSync(modulePath, {
-              encoding: 'UTF-8'
-            })
-
-            const parsedModule = babelParser.parse(moduleContents, {
-              sourceType: 'module'
-            }).program.body
-
-            programPath.unshiftContainer('body', t.variableDeclarator(
-              t.memberExpression(
-                t.identifier('modules'),
-                t.identifier(moduleName),
-                true
-              ),
-              t.callExpression(
-                t.parenthesizedExpression(
-                  t.functionExpression(
-                    null,
-                    [],
-                    t.blockStatement(
-                      parsedModule
-                    )
-                  )
-                ),
-                []
-              )
-            ))
-          }
+          guaranteeModulePath(programPath, modulePath, moduleName)
 
           path.replaceWithMultiple(
             path.node.specifiers.map(specifier => {
@@ -213,6 +269,21 @@ module.exports = function roll20Transform ({ types: t }) {
                       )
                     )
                   ])
+
+                case 'ImportNamespaceSpecifier':
+                  return t.variableDeclaration('const', [
+                    t.variableDeclarator(
+                      t.identifier(specifier.local.name),
+                      t.memberExpression(
+                        t.identifier('modules'),
+                        t.identifier(moduleName),
+                        true
+                      )
+                    )
+                  ])
+
+                default:
+                  throw new Error(`Unsupported import type: ${specifier.type}`)
               }
             })
           )

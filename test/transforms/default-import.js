@@ -3,18 +3,18 @@ modules['test/fixtures/default-import/object'] = (function () {
   const __export__default = {
     key: 'value'
   };
-  return {
+  return Object.assign({}, {
     default: __export__default
-  };
+  });
 })()
 modules['test/fixtures/default-import/function'] = (function () {
   function example() {
     return 'example';
   }
 
-  return {
+  return Object.assign({}, {
     default: example
-  };
+  });
 })()
 modules['test/fixtures/default-import/class'] = (function () {
   class ExampleClass {
@@ -32,9 +32,9 @@ modules['test/fixtures/default-import/class'] = (function () {
 
   }
 
-  return {
+  return Object.assign({}, {
     default: ExampleClass
-  };
+  });
 })()
 const ExampleClass = modules['test/fixtures/default-import/class'].default;
 const exampleFunction = modules['test/fixtures/default-import/function'].default;

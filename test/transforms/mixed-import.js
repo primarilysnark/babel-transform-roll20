@@ -30,10 +30,10 @@ modules['test/fixtures/mixed-import/class'] = (function () {
 
   }
 
-  return {
+  return Object.assign({}, {
     default: ExampleClass,
     ClassA: ClassA
-  };
+  });
 })()
 modules['test/fixtures/mixed-import/object'] = (function () {
   const __export__default = {
@@ -42,10 +42,10 @@ modules['test/fixtures/mixed-import/object'] = (function () {
   const objectA = {
     key: 'value'
   };
-  return {
+  return Object.assign({}, {
     default: __export__default,
     objectA: objectA
-  };
+  });
 })()
 const objectDefault = modules['test/fixtures/mixed-import/object'].default;
 const objectA = modules['test/fixtures/mixed-import/object'].objectA;

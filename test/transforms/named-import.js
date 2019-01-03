@@ -6,19 +6,19 @@ modules['test/fixtures/named-import/object'] = (function () {
   const objectB = {
     key: 'b'
   };
-  return {
+  return Object.assign({}, {
     objectA: objectA,
     objectB: objectB
-  };
+  });
 })()
 modules['test/fixtures/named-import/function'] = (function () {
   function example() {
     return 'example';
   }
 
-  return {
+  return Object.assign({}, {
     example: example
-  };
+  });
 })()
 modules['test/fixtures/named-import/class'] = (function () {
   class ExampleClass {
@@ -36,9 +36,9 @@ modules['test/fixtures/named-import/class'] = (function () {
 
   }
 
-  return {
+  return Object.assign({}, {
     ExampleClass: ExampleClass
-  };
+  });
 })()
 const ExampleClass = modules['test/fixtures/named-import/class'].ExampleClass;
 const exampleFunction = modules['test/fixtures/named-import/function'].exampleFunction;
