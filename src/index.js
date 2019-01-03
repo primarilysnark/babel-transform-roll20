@@ -10,7 +10,7 @@ module.exports = function roll20Transform ({ types: t }) {
     visitor: {
       Program: {
         enter (path) {
-          path.__roots = [fileRegExp.exec(path.hub.file.opts.filename)[2]]
+          path.__roots = fileRegExp.exec(path.hub.file.opts.filename)[2].split('/').filter(path => path !== '')
           path.__visited_files = {}
         },
         exit (path) {
@@ -148,7 +148,7 @@ module.exports = function roll20Transform ({ types: t }) {
             programPath.__roots.push(fileRoot)
           }
 
-          const modulePath = `/${programPath.__roots.join('')}${fileName}.js`
+          const modulePath = `/${programPath.__roots.join('/')}${fileName}.js`
           const moduleName = `'${modulePath.slice(process.cwd().length + 1, -3)}'`
 
           if (!programPath.__visited_files[modulePath]) {
