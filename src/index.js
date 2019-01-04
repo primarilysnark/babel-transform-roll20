@@ -39,7 +39,17 @@ module.exports = function roll20Transform ({ types: t }) {
     const moduleName = `'${path.relative(process.cwd(), `${file.dir}/${file.ext && file.base.endsWith(file.ext) ? file.base.slice(0, -file.ext.length) : file.base}`)}'`
 
     if (!program.__visited_files[filePath]) {
-      const fileContents = getFileContents(`${file.dir}/${file.base}${file.ext && file.base.endsWith(file.ext) ? '' : '.js'}`, program.__roots)
+      let fileContents = getFileContents(`${file.dir}/${file.base}${file.ext && file.base.endsWith(file.ext) ? '' : '.js'}`, program.__roots)
+
+      switch (file.ext) {
+        case '.json':
+          fileContents = `export default ${fileContents.replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')}`
+          break
+
+        default:
+          break
+      }
+
       const module = t.blockStatement(
         babelParser.parse(fileContents, {
           sourceType: 'module'

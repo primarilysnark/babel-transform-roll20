@@ -85,3 +85,10 @@ test('transforms multiple folder imports', async (t) => {
 
   t.is(code, result)
 })
+
+test('transforms json imports', async (t) => {
+  const result = await loadFile('./test/transforms/json.js')
+  const { code } = await transform('./test/fixtures/json.js')
+
+  t.is(code, result)
+})
