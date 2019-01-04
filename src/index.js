@@ -89,7 +89,7 @@ module.exports = function roll20Transform ({ types: t }) {
         enter (path) {
           const ancestor = path.parentPath.parentPath.parentPath.parentPath
 
-          if (ancestor.node.id && ancestor.node.id.object.name === 'modules' && t.isProgram(ancestor.parentPath.node)) {
+          if (ancestor.node.id && ancestor.node.id.object && ancestor.node.id.object.name === 'modules' && t.isProgram(ancestor.parentPath.node)) {
             const program = path.findParent((parent) => parent.isProgram())
             program.__roots_index++
 
