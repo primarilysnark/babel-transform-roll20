@@ -58,21 +58,24 @@ module.exports = function roll20Transform ({ types: t }) {
         }).program.body
       )
 
-      program.unshiftContainer('body', t.variableDeclarator(
-        t.memberExpression(
-          t.identifier('modules'),
-          t.identifier(moduleName),
-          true
-        ),
-        t.callExpression(
-          t.parenthesizedExpression(
-            t.functionExpression(
-              null,
-              [],
-              module
-            )
+      program.__module_root.insertAfter(t.expressionStatement(
+        t.assignmentExpression(
+          '=',
+          t.memberExpression(
+            t.identifier(moduleIdentifier),
+            t.identifier(moduleName),
+            true
           ),
-          []
+          t.callExpression(
+            t.parenthesizedExpression(
+              t.functionExpression(
+                null,
+                [],
+                module
+              )
+            ),
+            []
+          )
         )
       ))
     }
@@ -85,24 +88,67 @@ module.exports = function roll20Transform ({ types: t }) {
     visitor: {
       Program: {
         enter (program) {
+          if (program.__complete) {
+            return
+          }
+
           program.__roots = [path.relative(process.cwd(), fileRegExp.exec(program.hub.file.opts.filename)[2])]
           program.__roots_index = 0
           program.__visited_files = {}
-        },
-        exit (path) {
-          path.unshiftContainer('body', t.variableDeclaration('const', [
+
+          program.unshiftContainer('body', t.variableDeclaration('const', [
             t.variableDeclarator(
               t.identifier(moduleIdentifier),
               t.identifier('{}')
             )
           ]))
+
+          program.replaceWith(
+            t.program([
+              t.expressionStatement(
+                t.callExpression(
+                  t.functionExpression(
+                    null,
+                    [],
+                    t.blockStatement(program.node.body)
+                  ),
+                  []
+                )
+              )
+            ])
+          )
+
+          program.__complete = true
+        },
+        exit (path) {
+          if (path.__complete) {
+            return
+          }
+
+          path.__complete = true
+        }
+      },
+      VariableDeclaration: {
+        enter (path) {
+          if (!path.node.declarations || path.node.declarations.length !== 1) {
+            return
+          }
+
+          const [declaration] = path.node.declarations
+
+          if (declaration.id.name !== moduleIdentifier) {
+            return
+          }
+
+          const program = path.findParent((parent) => parent.isProgram())
+          program.__module_root = path
         }
       },
       BlockStatement: {
         enter (path) {
           const ancestor = path.parentPath.parentPath.parentPath.parentPath
 
-          if (ancestor.node.id && ancestor.node.id.object && ancestor.node.id.object.name === 'modules' && t.isProgram(ancestor.parentPath.node)) {
+          if (ancestor.node.type === 'AssignmentExpression' && ancestor.node.left && ancestor.node.left.type === 'MemberExpression' && ancestor.node.left.object.name === moduleIdentifier) {
             const program = path.findParent((parent) => parent.isProgram())
             program.__roots_index++
 
@@ -161,7 +207,7 @@ module.exports = function roll20Transform ({ types: t }) {
               t.variableDeclarator(
                 t.identifier(exportName),
                 t.memberExpression(
-                  t.identifier('modules'),
+                  t.identifier(moduleIdentifier),
                   t.identifier(moduleName),
                   true
                 )
@@ -267,7 +313,7 @@ module.exports = function roll20Transform ({ types: t }) {
                       t.identifier(specifier.local.name),
                       t.memberExpression(
                         t.memberExpression(
-                          t.identifier('modules'),
+                          t.identifier(moduleIdentifier),
                           t.identifier(moduleName),
                           true
                         ),
@@ -282,7 +328,7 @@ module.exports = function roll20Transform ({ types: t }) {
                       t.identifier(specifier.local.name),
                       t.memberExpression(
                         t.memberExpression(
-                          t.identifier('modules'),
+                          t.identifier(moduleIdentifier),
                           t.identifier(moduleName),
                           true
                         ),
@@ -296,7 +342,7 @@ module.exports = function roll20Transform ({ types: t }) {
                     t.variableDeclarator(
                       t.identifier(specifier.local.name),
                       t.memberExpression(
-                        t.identifier('modules'),
+                        t.identifier(moduleIdentifier),
                         t.identifier(moduleName),
                         true
                       )

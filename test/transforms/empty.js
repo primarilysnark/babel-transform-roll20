@@ -1,1 +1,3 @@
-const modules = {};
+(function () {
+  const modules = {};
+})();
