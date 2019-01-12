@@ -92,3 +92,10 @@ test('transforms json imports', async (t) => {
 
   t.is(code, result)
 })
+
+test('transforms duplicate imports', async (t) => {
+  const result = await loadFile('./test/transforms/duplicate-import.js')
+  const { code } = await transform('./test/fixtures/duplicate-import.js')
+
+  t.is(code, result)
+})
