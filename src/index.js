@@ -119,30 +119,21 @@ module.exports = function roll20Transform ({ types: t }) {
           )
 
           program.__complete = true
-        },
-        exit (path) {
-          if (path.__complete) {
-            return
-          }
-
-          path.__complete = true
         }
       },
-      VariableDeclaration: {
-        enter (path) {
-          if (!path.node.declarations || path.node.declarations.length !== 1) {
-            return
-          }
-
-          const [declaration] = path.node.declarations
-
-          if (declaration.id.name !== moduleIdentifier) {
-            return
-          }
-
-          const program = path.findParent((parent) => parent.isProgram())
-          program.__module_root = path
+      VariableDeclaration (path) {
+        if (!path.node.declarations || path.node.declarations.length !== 1) {
+          return
         }
+
+        const [declaration] = path.node.declarations
+
+        if (declaration.id.name !== moduleIdentifier) {
+          return
+        }
+
+        const program = path.findParent((parent) => parent.isProgram())
+        program.__module_root = path
       },
       BlockStatement: {
         enter (path) {
@@ -190,171 +181,163 @@ module.exports = function roll20Transform ({ types: t }) {
           }
         }
       },
-      ExportAllDeclaration: {
-        exit (path) {
-          const exportBlock = path.findParent((parent) => parent.__module)
-          if (!exportBlock) {
-            return
-          }
+      ExportAllDeclaration (path) {
+        const exportBlock = path.findParent((parent) => parent.__module)
+        if (!exportBlock) {
+          return
+        }
 
-          const moduleName = getModule(path)
-          const exportName = `__export__${moduleName.slice(1, -1).replace(/[./-]/g, '_')}`
+        const moduleName = getModule(path)
+        const exportName = `__export__${moduleName.slice(1, -1).replace(/[./-]/g, '_')}`
 
-          exportBlock.__exports[exportName] = true
+        exportBlock.__exports[exportName] = true
 
-          path.replaceWith(
-            t.variableDeclaration('const', [
-              t.variableDeclarator(
-                t.identifier(exportName),
-                t.memberExpression(
-                  t.identifier(moduleIdentifier),
-                  t.identifier(moduleName),
-                  true
-                )
+        path.replaceWith(
+          t.variableDeclaration('const', [
+            t.variableDeclarator(
+              t.identifier(exportName),
+              t.memberExpression(
+                t.identifier(moduleIdentifier),
+                t.identifier(moduleName),
+                true
               )
-            ])
-          )
+            )
+          ])
+        )
+      },
+      ExportDefaultDeclaration (path) {
+        const exportBlock = path.findParent((parent) => parent.__module)
+        if (!exportBlock) {
+          return
+        }
+
+        exportBlock.__exports['__export__default'] = path.node.declaration.id || true
+
+        switch (path.node.declaration.type) {
+          case 'ClassDeclaration':
+            path.replaceWith(
+              t.classDeclaration(
+                path.node.declaration.id || t.identifier('__export__default'),
+                path.node.declaration.superClass,
+                path.node.declaration.body
+              )
+            )
+            break
+
+          case 'FunctionDeclaration':
+            path.replaceWith(
+              t.functionDeclaration(
+                path.node.declaration.id || t.identifier('__export__default'),
+                path.node.declaration.params,
+                path.node.declaration.body,
+                path.node.declaration.generator,
+                path.node.declaration.async
+              )
+            )
+            break
+
+          default:
+            path.replaceWith(
+              t.variableDeclaration('const', [
+                t.variableDeclarator(
+                  t.identifier('__export__default'),
+                  path.node.declaration
+                )
+              ])
+            )
+            break
         }
       },
-      ExportDefaultDeclaration: {
-        exit (path) {
-          const exportBlock = path.findParent((parent) => parent.__module)
-          if (!exportBlock) {
-            return
-          }
+      ExportNamedDeclaration (path) {
+        const exportBlock = path.findParent((parent) => parent.__module)
 
-          exportBlock.__exports['__export__default'] = path.node.declaration.id || true
+        if (!exportBlock) {
+          return
+        }
 
-          switch (path.node.declaration.type) {
-            case 'ClassDeclaration':
-              path.replaceWith(
-                t.classDeclaration(
-                  path.node.declaration.id || t.identifier('__export__default'),
-                  path.node.declaration.superClass,
-                  path.node.declaration.body
-                )
-              )
-              break
+        switch (path.node.declaration.type) {
+          case 'ClassDeclaration':
+            exportBlock.__exports[path.node.declaration.id.name] = true
+            path.replaceWith(path.node.declaration)
+            break
 
-            case 'FunctionDeclaration':
-              path.replaceWith(
-                t.functionDeclaration(
-                  path.node.declaration.id || t.identifier('__export__default'),
-                  path.node.declaration.params,
-                  path.node.declaration.body,
-                  path.node.declaration.generator,
-                  path.node.declaration.async
-                )
-              )
-              break
+          case 'FunctionDeclaration':
+            exportBlock.__exports[path.node.declaration.id.name] = true
+            path.replaceWith(path.node.declaration)
+            break
 
-            default:
-              path.replaceWith(
-                t.variableDeclaration('const', [
+          case 'VariableDeclaration':
+            path.replaceWithMultiple(
+              path.node.declaration.declarations.map(declarator => {
+                exportBlock.__exports[declarator.id.name] = true
+
+                return t.variableDeclaration('const', [
                   t.variableDeclarator(
-                    t.identifier('__export__default'),
-                    path.node.declaration
+                    t.identifier(declarator.id.name),
+                    declarator.init
                   )
                 ])
-              )
-              break
-          }
+              })
+            )
+            break
+
+          default:
+            throw new Error(`Unsupported export type: '${path.node.declaration.type}'`)
         }
       },
-      ExportNamedDeclaration: {
-        exit (path) {
-          const exportBlock = path.findParent((parent) => parent.__module)
+      ImportDeclaration (path) {
+        const moduleName = getModule(path)
 
-          if (!exportBlock) {
-            return
-          }
-
-          switch (path.node.declaration.type) {
-            case 'ClassDeclaration':
-              exportBlock.__exports[path.node.declaration.id.name] = true
-              path.replaceWith(path.node.declaration)
-              break
-
-            case 'FunctionDeclaration':
-              exportBlock.__exports[path.node.declaration.id.name] = true
-              path.replaceWith(path.node.declaration)
-              break
-
-            case 'VariableDeclaration':
-              path.replaceWithMultiple(
-                path.node.declaration.declarations.map(declarator => {
-                  exportBlock.__exports[declarator.id.name] = true
-
-                  return t.variableDeclaration('const', [
-                    t.variableDeclarator(
-                      t.identifier(declarator.id.name),
-                      declarator.init
-                    )
-                  ])
-                })
-              )
-              break
-
-            default:
-              throw new Error(`Unsupported export type: '${path.node.declaration.type}'`)
-          }
-        }
-      },
-      ImportDeclaration: {
-        exit (path) {
-          const moduleName = getModule(path)
-
-          path.replaceWithMultiple(
-            path.node.specifiers.map(specifier => {
-              switch (specifier.type) {
-                case 'ImportDefaultSpecifier':
-                  return t.variableDeclaration('const', [
-                    t.variableDeclarator(
-                      t.identifier(specifier.local.name),
-                      t.memberExpression(
-                        t.memberExpression(
-                          t.identifier(moduleIdentifier),
-                          t.identifier(moduleName),
-                          true
-                        ),
-                        t.identifier('default')
-                      )
-                    )
-                  ])
-
-                case 'ImportSpecifier':
-                  return t.variableDeclaration('const', [
-                    t.variableDeclarator(
-                      t.identifier(specifier.local.name),
-                      t.memberExpression(
-                        t.memberExpression(
-                          t.identifier(moduleIdentifier),
-                          t.identifier(moduleName),
-                          true
-                        ),
-                        t.identifier(specifier.imported.name)
-                      )
-                    )
-                  ])
-
-                case 'ImportNamespaceSpecifier':
-                  return t.variableDeclaration('const', [
-                    t.variableDeclarator(
-                      t.identifier(specifier.local.name),
+        path.replaceWithMultiple(
+          path.node.specifiers.map(specifier => {
+            switch (specifier.type) {
+              case 'ImportDefaultSpecifier':
+                return t.variableDeclaration('const', [
+                  t.variableDeclarator(
+                    t.identifier(specifier.local.name),
+                    t.memberExpression(
                       t.memberExpression(
                         t.identifier(moduleIdentifier),
                         t.identifier(moduleName),
                         true
-                      )
+                      ),
+                      t.identifier('default')
                     )
-                  ])
+                  )
+                ])
 
-                default:
-                  throw new Error(`Unsupported import type: ${specifier.type}`)
-              }
-            })
-          )
-        }
+              case 'ImportSpecifier':
+                return t.variableDeclaration('const', [
+                  t.variableDeclarator(
+                    t.identifier(specifier.local.name),
+                    t.memberExpression(
+                      t.memberExpression(
+                        t.identifier(moduleIdentifier),
+                        t.identifier(moduleName),
+                        true
+                      ),
+                      t.identifier(specifier.imported.name)
+                    )
+                  )
+                ])
+
+              case 'ImportNamespaceSpecifier':
+                return t.variableDeclaration('const', [
+                  t.variableDeclarator(
+                    t.identifier(specifier.local.name),
+                    t.memberExpression(
+                      t.identifier(moduleIdentifier),
+                      t.identifier(moduleName),
+                      true
+                    )
+                  )
+                ])
+
+              default:
+                throw new Error(`Unsupported import type: ${specifier.type}`)
+            }
+          })
+        )
       }
     }
   }
