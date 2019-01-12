@@ -1,13 +1,13 @@
 export default class ExampleClass {
-  constructor() {
+  constructor () {
     this.property = 'example'
   }
 
-  static staticMethod() {
+  static staticMethod () {
     console.log('static')
   }
 
-  method() {
+  method () {
     console.log('method')
   }
 }

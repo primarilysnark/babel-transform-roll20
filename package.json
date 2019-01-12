@@ -4,7 +4,7 @@
   "description": "A babel transform tool for transpiling scripts for the Roll20 sandbox.",
   "main": "src/index.js",
   "scripts": {
-    "lint": "standard",
+    "lint": "prettier-standard 'src/**/*.js' 'test/fixtures/**/*.js' 'test/index.js'",
     "test": "NODE_ENV=test BABEL_DISABLE_CACHE=1 ava"
   },
   "author": {
@@ -16,7 +16,7 @@
     "@babel/parser": "^7.2.3",
     "@babel/preset-env": "^7.2.3",
     "ava": "^1.0.1",
-    "standard": "^12.0.1"
+    "prettier-standard": "^8.0.1"
   },
   "peerDependencies": {
     "@babel/core": "^7.2.2"
@@ -27,12 +27,6 @@
       "test/**/*.js",
       "!test/fixtures/**/*.js",
       "!test/transforms/**/*.js"
-    ]
-  },
-  "standard": {
-    "ignore": [
-      "test/fixtures",
-      "test/transforms"
     ]
   }
 }
