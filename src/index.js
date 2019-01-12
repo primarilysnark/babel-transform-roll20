@@ -150,7 +150,7 @@ module.exports = function roll20Transform ({ types: t }) {
           }
 
           const moduleName = getModule(path)
-          const exportName = `__export__${moduleName.slice(1, -1).replace(/[/-]/g, '_')}`
+          const exportName = `__export__${moduleName.slice(1, -1).replace(/[/-.]/g, '_')}`
 
           exportBlock.__exports[exportName] = true
 
