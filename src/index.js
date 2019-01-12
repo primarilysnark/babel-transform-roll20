@@ -34,71 +34,89 @@ function getFileContents (file) {
   }
 }
 
+function processFileContents (file, contents) {
+  switch (file.ext) {
+    case '.json':
+      return `export default ${contents.replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')}`
+
+    default:
+      return contents
+  }
+}
+
 module.exports = function roll20Transform ({ types: t }) {
   function getModule (basePath) {
-    const program = basePath.findParent((parent) => parent.isProgram())
-    const currentRoot = program.__roots[program.__roots_index]
+    const currentRoot = this.roots.resolvers[this.roots.index]
 
     const filePath = `/${path.join(currentRoot, basePath.node.source.value)}`
     const file = path.parse(filePath)
     const moduleName = `'${path.relative(process.cwd(), `${file.dir}/${file.ext && file.base.endsWith(file.ext) ? file.base.slice(0, -file.ext.length) : file.base}`)}'`
 
-    if (!program.__visited_files[filePath]) {
-      let {contents, root} = getFileContents(file)
-      program.__roots.push(root)
-
-      switch (file.ext) {
-        case '.json':
-          contents = `export default ${contents.replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')}`
-          break
-
-        default:
-          break
-      }
-
-      const module = t.blockStatement(
-        babelParser.parse(contents, {
-          sourceType: 'module'
-        }).program.body
-      )
-
-      program.__module_root.insertAfter(t.expressionStatement(
-        t.assignmentExpression(
-          '=',
-          t.memberExpression(
-            t.identifier(moduleIdentifier),
-            t.identifier(moduleName),
-            true
-          ),
-          t.callExpression(
-            t.parenthesizedExpression(
-              t.functionExpression(
-                null,
-                [],
-                module
-              )
-            ),
-            []
-          )
-        )
-      ))
+    if (this.modules.cache.includes(moduleName)) {
+      return moduleName
     }
+
+    let { contents, root } = getFileContents(file)
+
+    this.modules.cache.push(moduleName)
+    this.roots.resolvers.push(root)
+
+    const module = t.blockStatement(
+      babelParser.parse(processFileContents(file, contents), {
+        sourceType: 'module'
+      }).program.body
+    )
+
+    this.modules.root.insertAfter(t.expressionStatement(
+      t.assignmentExpression(
+        '=',
+        t.memberExpression(
+          t.identifier(moduleIdentifier),
+          t.identifier(moduleName),
+          true
+        ),
+        t.callExpression(
+          t.parenthesizedExpression(
+            t.functionExpression(
+              null,
+              [],
+              module
+            )
+          ),
+          []
+        )
+      )
+    ))
 
     return moduleName
   }
 
   return {
     name: 'babel-transform-roll20',
+    pre () {
+      this.replacedNodes = new WeakSet()
+      this.processedModules = new WeakMap()
+
+      this.modules = {
+        cache: [],
+        root: null,
+        get: getModule.bind(this)
+      }
+
+      this.roots = {
+        resolvers: [],
+        index: 0
+      }
+    },
     visitor: {
       Program: {
         enter (program) {
-          if (program.__complete) {
+          if (this.replacedNodes.has(program.node)) {
             return
           }
 
-          program.__roots = [path.relative(process.cwd(), fileRegExp.exec(program.hub.file.opts.filename)[2])]
-          program.__roots_index = 0
-          program.__visited_files = {}
+          this.roots.resolvers.push(path.relative(process.cwd(), fileRegExp.exec(program.hub.file.opts.filename)[2]))
+          this.roots.index = 0
 
           program.unshiftContainer('body', t.variableDeclaration('const', [
             t.variableDeclarator(
@@ -122,7 +140,7 @@ module.exports = function roll20Transform ({ types: t }) {
             ])
           )
 
-          program.__complete = true
+          this.replacedNodes.add(program.node)
         }
       },
       VariableDeclaration (path) {
@@ -136,65 +154,70 @@ module.exports = function roll20Transform ({ types: t }) {
           return
         }
 
-        const program = path.findParent((parent) => parent.isProgram())
-        program.__module_root = path
+        this.modules.root = path
       },
       BlockStatement: {
         enter (path) {
           const ancestor = path.parentPath.parentPath.parentPath.parentPath
 
-          if (ancestor.node.type === 'AssignmentExpression' && ancestor.node.left && ancestor.node.left.type === 'MemberExpression' && ancestor.node.left.object.name === moduleIdentifier) {
-            const program = path.findParent((parent) => parent.isProgram())
-            program.__roots_index++
-
-            path.__module = true
-            path.__exports = {}
+          if (t.isAssignmentExpression(ancestor.node) && t.isMemberExpression(ancestor.node.left) && ancestor.node.left.object.name === moduleIdentifier) {
+            this.roots.index++
+            this.processedModules.set(path.node, {})
           }
         },
         exit (path) {
-          if (path.__module && Object.keys(path.__exports).length !== 0) {
-            const program = path.findParent((parent) => parent.isProgram())
-            program.__roots.unshift()
-
-            path.__module = false
-
-            const exportAllKeys = Object.keys(path.__exports).filter(exportKey => exportKey.startsWith('__export__') && exportKey !== '__export__default')
-            const exportKeys = Object.keys(path.__exports).filter(exportKey => !exportKey.startsWith('__export__') || exportKey === '__export__default')
-
-            path.pushContainer('body', t.returnStatement(
-              t.callExpression(
-                t.memberExpression(
-                  t.identifier('Object'),
-                  t.identifier('assign')
-                ),
-                [
-                  t.objectExpression([]),
-                  ...exportAllKeys.map(exportKey => t.identifier(exportKey)),
-                  t.objectExpression(exportKeys.map(exportKey => {
-                    const exportValue = path.__exports[exportKey]
-
-                    if (exportKey === '__export__default') {
-                      return t.objectProperty(t.identifier('default'), exportValue === true ? t.identifier(exportKey) : exportValue)
-                    }
-
-                    return t.objectProperty(t.identifier(exportKey), exportValue === true ? t.identifier(exportKey) : exportValue)
-                  }))
-                ]
-              )
-            ))
+          if (!this.processedModules.has(path.node)) {
+            return
           }
+
+          const exportDeclarations = this.processedModules.get(path.node)
+          if (Object.keys(exportDeclarations).length === 0) {
+            return
+          }
+
+          this.roots.resolvers.unshift()
+
+          const exportAllKeys = Object.keys(exportDeclarations).filter(exportKey => exportKey.startsWith('__export__') && exportKey !== '__export__default')
+          const exportKeys = Object.keys(exportDeclarations).filter(exportKey => !exportKey.startsWith('__export__') || exportKey === '__export__default')
+
+          this.processedModules.delete(path.node)
+
+          path.pushContainer('body', t.returnStatement(
+            t.callExpression(
+              t.memberExpression(
+                t.identifier('Object'),
+                t.identifier('assign')
+              ),
+              [
+                t.objectExpression([]),
+                ...exportAllKeys.map(exportKey => t.identifier(exportKey)),
+                t.objectExpression(exportKeys.map(exportKey => {
+                  const exportValue = exportDeclarations[exportKey]
+
+                  if (exportKey === '__export__default') {
+                    return t.objectProperty(t.identifier('default'), exportValue === true ? t.identifier(exportKey) : exportValue)
+                  }
+
+                  return t.objectProperty(t.identifier(exportKey), exportValue === true ? t.identifier(exportKey) : exportValue)
+                }))
+              ]
+            )
+          ))
         }
       },
       ExportAllDeclaration (path) {
-        const exportBlock = path.findParent((parent) => parent.__module)
+        const exportBlock = path.findParent((parent) => this.processedModules.has(parent.node))
         if (!exportBlock) {
           return
         }
 
-        const moduleName = getModule(path)
+        const moduleName = this.modules.get(path)
         const exportName = `__export__${moduleName.slice(1, -1).replace(/[./-]/g, '_')}`
 
-        exportBlock.__exports[exportName] = true
+        this.processedModules.set(exportBlock.node, {
+          ...this.processedModules.get(exportBlock.node),
+          [exportName]: true
+        })
 
         path.replaceWith(
           t.variableDeclaration('const', [
@@ -210,12 +233,15 @@ module.exports = function roll20Transform ({ types: t }) {
         )
       },
       ExportDefaultDeclaration (path) {
-        const exportBlock = path.findParent((parent) => parent.__module)
+        const exportBlock = path.findParent((parent) => this.processedModules.has(parent.node))
         if (!exportBlock) {
           return
         }
 
-        exportBlock.__exports['__export__default'] = path.node.declaration.id || true
+        this.processedModules.set(exportBlock.node, {
+          ...this.processedModules.get(exportBlock.node),
+          '__export__default': path.node.declaration.id || true
+        })
 
         switch (path.node.declaration.type) {
           case 'ClassDeclaration':
@@ -253,27 +279,29 @@ module.exports = function roll20Transform ({ types: t }) {
         }
       },
       ExportNamedDeclaration (path) {
-        const exportBlock = path.findParent((parent) => parent.__module)
-
+        const exportBlock = path.findParent((parent) => this.processedModules.has(parent.node))
         if (!exportBlock) {
           return
         }
 
         switch (path.node.declaration.type) {
           case 'ClassDeclaration':
-            exportBlock.__exports[path.node.declaration.id.name] = true
-            path.replaceWith(path.node.declaration)
-            break
-
           case 'FunctionDeclaration':
-            exportBlock.__exports[path.node.declaration.id.name] = true
+            this.processedModules.set(exportBlock.node, {
+              ...this.processedModules.get(exportBlock.node),
+              [path.node.declaration.id.name]: true
+            })
+
             path.replaceWith(path.node.declaration)
             break
 
           case 'VariableDeclaration':
             path.replaceWithMultiple(
               path.node.declaration.declarations.map(declarator => {
-                exportBlock.__exports[declarator.id.name] = true
+                this.processedModules.set(exportBlock.node, {
+                  ...this.processedModules.get(exportBlock.node),
+                  [declarator.id.name]: true
+                })
 
                 return t.variableDeclaration('const', [
                   t.variableDeclarator(
@@ -290,7 +318,7 @@ module.exports = function roll20Transform ({ types: t }) {
         }
       },
       ImportDeclaration (path) {
-        const moduleName = getModule(path)
+        const moduleName = this.modules.get(path)
 
         path.replaceWithMultiple(
           path.node.specifiers.map(specifier => {
