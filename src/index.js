@@ -5,33 +5,36 @@ const path = require('path')
 const moduleIdentifier = 'modules'
 const fileRegExp = /(?:(\.*)\/((?:[A-Za-z0-9-]+\/)*))([A-Za-z0-9-]+)/
 
-module.exports = function roll20Transform ({ types: t }) {
-  function getFileContents (file, roots) {
-    const filePath = `${file.dir}/${file.base}${file.ext && file.base.endsWith(file.ext) ? '' : '.js'}`
+function getFileContents (file) {
+  const fileExtension = file.ext && file.base.endsWith(file.ext) ? '' : '.js'
+  const filePath = `${file.dir}/${file.base}${fileExtension}`
 
-    try {
-      const file = fs.readFileSync(filePath, {
-        encoding: 'UTF-8'
-      })
+  try {
+    const fileContents = fs.readFileSync(filePath, {
+      encoding: 'UTF-8'
+    })
 
-      roots.push(path.parse(filePath).dir.slice(1))
+    return {
+      contents: fileContents,
+      root: file.dir.slice(1)
+    }
+  } catch (exception) {
+    if (exception.code !== 'ENOENT') {
+      throw exception
+    }
 
-      return file
-    } catch (exception) {
-      if (exception.code !== 'ENOENT') {
-        throw exception
-      }
+    const fileContents = fs.readFileSync(filePath.slice(0, -3) + '/index.js', {
+      encoding: 'UTF-8'
+    })
 
-      const file = fs.readFileSync(filePath.slice(0, -3) + '/index.js', {
-        encoding: 'UTF-8'
-      })
-
-      roots.push(filePath.slice(1, -3))
-
-      return file
+    return {
+      contents: fileContents,
+      root: filePath.slice(1, -3)
     }
   }
+}
 
+module.exports = function roll20Transform ({ types: t }) {
   function getModule (basePath) {
     const program = basePath.findParent((parent) => parent.isProgram())
     const currentRoot = program.__roots[program.__roots_index]
@@ -41,11 +44,12 @@ module.exports = function roll20Transform ({ types: t }) {
     const moduleName = `'${path.relative(process.cwd(), `${file.dir}/${file.ext && file.base.endsWith(file.ext) ? file.base.slice(0, -file.ext.length) : file.base}`)}'`
 
     if (!program.__visited_files[filePath]) {
-      let fileContents = getFileContents(file, program.__roots)
+      let {contents, root} = getFileContents(file)
+      program.__roots.push(root)
 
       switch (file.ext) {
         case '.json':
-          fileContents = `export default ${fileContents.replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')}`
+          contents = `export default ${contents.replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')}`
           break
 
         default:
@@ -53,7 +57,7 @@ module.exports = function roll20Transform ({ types: t }) {
       }
 
       const module = t.blockStatement(
-        babelParser.parse(fileContents, {
+        babelParser.parse(contents, {
           sourceType: 'module'
         }).program.body
       )
