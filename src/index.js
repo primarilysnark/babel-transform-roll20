@@ -6,7 +6,9 @@ const moduleIdentifier = 'modules'
 const fileRegExp = /(?:(\.*)\/((?:[A-Za-z0-9-]+\/)*))([A-Za-z0-9-]+)/
 
 module.exports = function roll20Transform ({ types: t }) {
-  function getFileContents (filePath, roots) {
+  function getFileContents (file, roots) {
+    const filePath = `${file.dir}/${file.base}${file.ext && file.base.endsWith(file.ext) ? '' : '.js'}`
+
     try {
       const file = fs.readFileSync(filePath, {
         encoding: 'UTF-8'
@@ -39,7 +41,7 @@ module.exports = function roll20Transform ({ types: t }) {
     const moduleName = `'${path.relative(process.cwd(), `${file.dir}/${file.ext && file.base.endsWith(file.ext) ? file.base.slice(0, -file.ext.length) : file.base}`)}'`
 
     if (!program.__visited_files[filePath]) {
-      let fileContents = getFileContents(`${file.dir}/${file.base}${file.ext && file.base.endsWith(file.ext) ? '' : '.js'}`, program.__roots)
+      let fileContents = getFileContents(file, program.__roots)
 
       switch (file.ext) {
         case '.json':
@@ -150,7 +152,7 @@ module.exports = function roll20Transform ({ types: t }) {
           }
 
           const moduleName = getModule(path)
-          const exportName = `__export__${moduleName.slice(1, -1).replace(/[/-.]/g, '_')}`
+          const exportName = `__export__${moduleName.slice(1, -1).replace(/[./-]/g, '_')}`
 
           exportBlock.__exports[exportName] = true
 
