@@ -31,7 +31,10 @@ module.exports = class ModuleLoader {
 
     const currentRoot = this.roots.resolvers[this.roots.index]
 
-    const filePath = `./${path.join(currentRoot, modulePath.node.source.value)}`
+    const filePath = `./${path.join(
+      currentRoot,
+      modulePath.node.source.value
+    )}`
     const file = path.parse(filePath)
 
     const moduleName = `'${path.relative(

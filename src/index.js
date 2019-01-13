@@ -1,12 +1,12 @@
 const ModuleLoader = require('./module-loader')
 
-const moduleIdentifier = 'modules'
+const MODULE_IDENTIFIER = 'modules'
 
 module.exports = function roll20Transform ({ types: t }) {
   return {
     name: 'babel-transform-roll20',
     pre (state) {
-      this.moduleLoader = new ModuleLoader(moduleIdentifier, state, t)
+      this.moduleLoader = new ModuleLoader(MODULE_IDENTIFIER, state, t)
       this.seenNodes = new WeakSet()
 
       this.processedModules = new WeakMap()
@@ -22,7 +22,7 @@ module.exports = function roll20Transform ({ types: t }) {
             'body',
             t.variableDeclaration('const', [
               t.variableDeclarator(
-                t.identifier(moduleIdentifier),
+                t.identifier(MODULE_IDENTIFIER),
                 t.identifier('{}')
               )
             ])
@@ -53,7 +53,7 @@ module.exports = function roll20Transform ({ types: t }) {
 
         const [declaration] = path.node.declarations
 
-        if (declaration.id.name !== moduleIdentifier) {
+        if (declaration.id.name !== MODULE_IDENTIFIER) {
           return
         }
 
@@ -66,7 +66,7 @@ module.exports = function roll20Transform ({ types: t }) {
           if (
             t.isAssignmentExpression(ancestor.node) &&
             t.isMemberExpression(ancestor.node.left) &&
-            ancestor.node.left.object.name === moduleIdentifier
+            ancestor.node.left.object.name === MODULE_IDENTIFIER
           ) {
             this.moduleLoader.roots.index++
             this.processedModules.set(path.node, {})
@@ -158,7 +158,7 @@ module.exports = function roll20Transform ({ types: t }) {
             t.variableDeclarator(
               t.identifier(exportName),
               t.memberExpression(
-                t.identifier(moduleIdentifier),
+                t.identifier(MODULE_IDENTIFIER),
                 t.identifier(moduleName),
                 true
               )
@@ -269,7 +269,7 @@ module.exports = function roll20Transform ({ types: t }) {
                     t.identifier(specifier.local.name),
                     t.memberExpression(
                       t.memberExpression(
-                        t.identifier(moduleIdentifier),
+                        t.identifier(MODULE_IDENTIFIER),
                         t.identifier(moduleName),
                         true
                       ),
@@ -284,7 +284,7 @@ module.exports = function roll20Transform ({ types: t }) {
                     t.identifier(specifier.local.name),
                     t.memberExpression(
                       t.memberExpression(
-                        t.identifier(moduleIdentifier),
+                        t.identifier(MODULE_IDENTIFIER),
                         t.identifier(moduleName),
                         true
                       ),
@@ -298,7 +298,7 @@ module.exports = function roll20Transform ({ types: t }) {
                   t.variableDeclarator(
                     t.identifier(specifier.local.name),
                     t.memberExpression(
-                      t.identifier(moduleIdentifier),
+                      t.identifier(MODULE_IDENTIFIER),
                       t.identifier(moduleName),
                       true
                     )
