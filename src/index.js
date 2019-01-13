@@ -1,56 +1,14 @@
 const babelParser = require('@babel/parser')
-const fs = require('fs')
+const fileUtil = require('./file-utility')
 const path = require('path')
 
 const moduleIdentifier = 'modules'
-const fileRegExp = /(?:(\.*)\/((?:[A-Za-z0-9-]+\/)*))([A-Za-z0-9-]+)/
-
-function getFileContents (file) {
-  const fileExtension = file.ext && file.base.endsWith(file.ext) ? '' : '.js'
-  const filePath = `${file.dir}/${file.base}${fileExtension}`
-
-  try {
-    const fileContents = fs.readFileSync(filePath, {
-      encoding: 'UTF-8'
-    })
-
-    return {
-      contents: fileContents,
-      root: file.dir.slice(1)
-    }
-  } catch (exception) {
-    if (exception.code !== 'ENOENT') {
-      throw exception
-    }
-
-    const fileContents = fs.readFileSync(filePath.slice(0, -3) + '/index.js', {
-      encoding: 'UTF-8'
-    })
-
-    return {
-      contents: fileContents,
-      root: filePath.slice(1, -3)
-    }
-  }
-}
-
-function processFileContents (file, contents) {
-  switch (file.ext) {
-    case '.json':
-      return `export default ${contents
-        .replace(/\u2028/g, '\\u2028')
-        .replace(/\u2029/g, '\\u2029')}`
-
-    default:
-      return contents
-  }
-}
 
 module.exports = function roll20Transform ({ types: t }) {
   function getModule (basePath) {
     const currentRoot = this.roots.resolvers[this.roots.index]
 
-    const filePath = `/${path.join(currentRoot, basePath.node.source.value)}`
+    const filePath = `./${path.join(currentRoot, basePath.node.source.value)}`
     const file = path.parse(filePath)
     const moduleName = `'${path.relative(
       process.cwd(),
@@ -65,13 +23,13 @@ module.exports = function roll20Transform ({ types: t }) {
       return moduleName
     }
 
-    let { contents, root } = getFileContents(file)
+    let { contents, root } = fileUtil.get(file)
 
     this.modules.cache.push(moduleName)
     this.roots.resolvers.push(root)
 
     const module = t.blockStatement(
-      babelParser.parse(processFileContents(file, contents), {
+      babelParser.parse(fileUtil.format(file, contents), {
         sourceType: 'module'
       }).program.body
     )
@@ -98,7 +56,7 @@ module.exports = function roll20Transform ({ types: t }) {
 
   return {
     name: 'babel-transform-roll20',
-    pre () {
+    pre (state) {
       this.replacedNodes = new WeakSet()
       this.processedModules = new WeakMap()
 
@@ -109,7 +67,12 @@ module.exports = function roll20Transform ({ types: t }) {
       }
 
       this.roots = {
-        resolvers: [],
+        resolvers: [
+          path.relative(
+            process.cwd(),
+            path.parse(state.hub.file.opts.filename).dir
+          )
+        ],
         index: 0
       }
     },
@@ -119,14 +82,6 @@ module.exports = function roll20Transform ({ types: t }) {
           if (this.replacedNodes.has(program.node)) {
             return
           }
-
-          this.roots.resolvers.push(
-            path.relative(
-              process.cwd(),
-              fileRegExp.exec(program.hub.file.opts.filename)[2]
-            )
-          )
-          this.roots.index = 0
 
           program.unshiftContainer(
             'body',
