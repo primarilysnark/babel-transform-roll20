@@ -1,85 +1,20 @@
-const babelParser = require('@babel/parser')
-const fileUtil = require('./file-utility')
-const path = require('path')
+const ModuleLoader = require('./module-loader')
 
 const moduleIdentifier = 'modules'
 
 module.exports = function roll20Transform ({ types: t }) {
-  function getModule (basePath) {
-    const currentRoot = this.roots.resolvers[this.roots.index]
-
-    const filePath = `./${path.join(currentRoot, basePath.node.source.value)}`
-    const file = path.parse(filePath)
-    const moduleName = `'${path.relative(
-      process.cwd(),
-      `${file.dir}/${
-        file.ext && file.base.endsWith(file.ext)
-          ? file.base.slice(0, -file.ext.length)
-          : file.base
-      }`
-    )}'`
-
-    if (this.modules.cache.includes(moduleName)) {
-      return moduleName
-    }
-
-    let { contents, root } = fileUtil.get(file)
-
-    this.modules.cache.push(moduleName)
-    this.roots.resolvers.push(root)
-
-    const module = t.blockStatement(
-      babelParser.parse(fileUtil.format(file, contents), {
-        sourceType: 'module'
-      }).program.body
-    )
-
-    this.modules.root.insertAfter(
-      t.expressionStatement(
-        t.assignmentExpression(
-          '=',
-          t.memberExpression(
-            t.identifier(moduleIdentifier),
-            t.identifier(moduleName),
-            true
-          ),
-          t.callExpression(
-            t.parenthesizedExpression(t.functionExpression(null, [], module)),
-            []
-          )
-        )
-      )
-    )
-
-    return moduleName
-  }
-
   return {
     name: 'babel-transform-roll20',
     pre (state) {
-      this.replacedNodes = new WeakSet()
+      this.moduleLoader = new ModuleLoader(moduleIdentifier, state, t)
+      this.seenNodes = new WeakSet()
+
       this.processedModules = new WeakMap()
-
-      this.modules = {
-        cache: [],
-        root: null,
-        get: getModule.bind(this)
-      }
-
-      this.roots = {
-        resolvers: [
-          path.relative(
-            process.cwd(),
-            path.parse(state.hub.file.opts.filename).dir
-          )
-        ],
-        index: 0
-      }
     },
     visitor: {
       Program: {
         enter (program) {
-          if (this.replacedNodes.has(program.node)) {
+          if (this.seenNodes.has(program.node)) {
             return
           }
 
@@ -108,7 +43,7 @@ module.exports = function roll20Transform ({ types: t }) {
             ])
           )
 
-          this.replacedNodes.add(program.node)
+          this.seenNodes.add(program.node)
         }
       },
       VariableDeclaration (path) {
@@ -122,7 +57,7 @@ module.exports = function roll20Transform ({ types: t }) {
           return
         }
 
-        this.modules.root = path
+        this.moduleLoader.setRoot(path)
       },
       BlockStatement: {
         enter (path) {
@@ -133,7 +68,7 @@ module.exports = function roll20Transform ({ types: t }) {
             t.isMemberExpression(ancestor.node.left) &&
             ancestor.node.left.object.name === moduleIdentifier
           ) {
-            this.roots.index++
+            this.moduleLoader.roots.index++
             this.processedModules.set(path.node, {})
           }
         },
@@ -147,7 +82,7 @@ module.exports = function roll20Transform ({ types: t }) {
             return
           }
 
-          this.roots.resolvers.unshift()
+          this.moduleLoader.roots.resolvers.unshift()
 
           const exportAllKeys = Object.keys(exportDeclarations).filter(
             exportKey =>
@@ -208,7 +143,7 @@ module.exports = function roll20Transform ({ types: t }) {
           return
         }
 
-        const moduleName = this.modules.get(path)
+        const moduleName = this.moduleLoader.findOrCreate(path)
         const exportName = `__export__${moduleName
           .slice(1, -1)
           .replace(/[./-]/g, '_')}`
@@ -323,7 +258,7 @@ module.exports = function roll20Transform ({ types: t }) {
         }
       },
       ImportDeclaration (path) {
-        const moduleName = this.modules.get(path)
+        const moduleName = this.moduleLoader.findOrCreate(path)
 
         path.replaceWithMultiple(
           path.node.specifiers.map(specifier => {
