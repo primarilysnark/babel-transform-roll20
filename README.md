@@ -1,6 +1,17 @@
 # babel-transform-roll20
 > This plugin allows Babel to transform import and export statements to support the Roll20 API sandbox.
 
+## Install
+Install with npm:
+```
+npm install --save-dev babel-transform-roll20
+```
+
+Install with yarn:
+```
+yarn add babel-transform-roll20 --dev
+```
+
 ## Introduction
 [Roll20](https://roll20.net/) is a virtual tabletop application that allows pen-and-paper games online. As part of this experience, Roll20 Pro Users are able to write their own scripts for interacting with the application, ranging from simple macros to complex chat bots and campaign tool managers. These scripts run within the [Roll20 API Sandbox](https://wiki.roll20.net/API:Sandbox_Model), a restricted Node.js virtual machine, and have limitations imposed on them for security or simplicity reasons.
 
